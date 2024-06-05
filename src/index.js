@@ -4,6 +4,9 @@ import WORDS_LIST from "./wordList.json";
 const letterRows = document.getElementsByClassName("letter-row");
 
 const onKeyDown$ = fromEvent(document, "keydown");
+
+const messageText = document.querySelector(".message-text");
+
 let letterRowIndex = 0;
 let letterIndex = 0;
 let userAnswer = [];
@@ -12,6 +15,7 @@ const getRandomWord = () => {
   return WORDS_LIST[Math.round(Math.random() * WORDS_LIST.length)];
 };
 const correctWord = getRandomWord();
+console.log(correctWord);
 
 const didUserWin$ = new Subject();
 
@@ -38,11 +42,7 @@ const deleteLetter = {
   next: (event) => {
     const pressedKey = event.key;
 
-    if (pressedKey === "Backspace") {
-      if (letterIndex === 0) {
-        return;
-      }
-
+    if (pressedKey === "Backspace" && letterIndex !== 0) {
       letterIndex--;
       userAnswer.pop();
       const letterBox =
@@ -56,10 +56,41 @@ const deleteLetter = {
 const checkWord = {
   next: (event) => {
     if (event.key === "Enter") {
-      console.log(correctWord);
-      console.log(userAnswer.join(""));
+      const correctWordArray = Array.from(correctWord);
+
+      if (userAnswer.length !== 5) {
+        messageText.textContent = "¡Te faltan letras!"
+        return;
+      }
+
       if (correctWord === userAnswer.join("")) {
         didUserWin$.next();
+      }
+
+      for (let i = 0; i < 5; i++) {
+        let letterColor = "";
+        let letterBox = Array.from(letterRows)[letterRowIndex].children[i];
+        console.log(letterBox);
+        let letterPosition = Array.from(correctWord).indexOf(userAnswer[i]);
+        console.log(letterPosition);
+
+        if (letterPosition === -1) {
+          letterColor = "letter-grey";
+        } else {
+          if (correctWordArray[i] === userAnswer[i]) {
+            letterColor = "letter-green";
+          } else {
+            letterColor = "letter-yellow";
+          }
+        }
+
+        letterBox.classList.add(letterColor);
+      }
+
+      if (userAnswer.length === 5) {
+        letterIndex = 0;
+        userAnswer = [];
+        letterRowIndex++;
       }
     }
   },
