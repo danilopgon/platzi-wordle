@@ -1,108 +1,142 @@
-import { Subject, fromEvent } from "rxjs";
+import { merge, fromEvent, Subject, map, filter, takeUntil } from "rxjs";
 import WORDS_LIST from "./wordList.json";
 
+const restartButton = document.querySelector(".restart-button");
 const letterRows = document.getElementsByClassName("letter-row");
-
+const messageText = document.querySelector(".message-text");
 const onKeyDown$ = fromEvent(document, "keydown");
 
-const messageText = document.querySelector(".message-text");
+let letterIndex;
+let letterRowIndex;
+let userAnswer;
 
-let letterRowIndex = 0;
-let letterIndex = 0;
-let userAnswer = [];
+const getRandomWord = () =>
+  WORDS_LIST[Math.floor(Math.random() * WORDS_LIST.length)];
+let rightWord;
 
-const getRandomWord = () => {
-  return WORDS_LIST[Math.round(Math.random() * WORDS_LIST.length)];
-};
-const correctWord = getRandomWord();
-console.log(correctWord);
+const didUserWinOrLose$ = new Subject();
 
-const didUserWin$ = new Subject();
+const insertLetter$ = onKeyDown$.pipe(
+  map((event) => event.key.toUpperCase()),
+  filter(
+    (pressedKey) =>
+      pressedKey.length === 1 && pressedKey.match(/[a-z]/i) && letterIndex < 5
+  )
+);
 
 const insertLetter = {
-  next: (event) => {
-    const pressedKey = event.key.toUpperCase();
-
-    if (
-      pressedKey.length === 1 &&
-      pressedKey.match(/[a-z]/i) &&
-      letterIndex < 5
-    ) {
-      const letterBox =
-        Array.from(letterRows)[letterRowIndex].children[letterIndex];
-      letterBox.textContent = pressedKey;
-      letterBox.classList.add("filled-letter");
-      userAnswer.push(pressedKey);
-      letterIndex++;
-    }
+  next: (letter) => {
+    let letterBox =
+      Array.from(letterRows)[letterRowIndex].children[letterIndex];
+    letterBox.textContent = letter;
+    letterBox.classList.add("filled-letter");
+    letterIndex++;
+    userAnswer.push(letter);
   },
 };
 
-const deleteLetter = {
-  next: (event) => {
-    const pressedKey = event.key;
-
-    if (pressedKey === "Backspace" && letterIndex !== 0) {
-      letterIndex--;
-      userAnswer.pop();
-      const letterBox =
-        Array.from(letterRows)[letterRowIndex].children[letterIndex];
-      letterBox.textContent = "";
-      letterBox.classList.remove("filled-letter");
-    }
-  },
-};
+const checkWord$ = onKeyDown$.pipe(
+  map((event) => event.key),
+  filter((key) => key === "Enter" && letterRowIndex < 6)
+);
 
 const checkWord = {
-  next: (event) => {
-    if (event.key === "Enter") {
-      const correctWordArray = Array.from(correctWord);
+  next: () => {
+    if (userAnswer.length != 5) {
+      messageText.textContent =
+        userAnswer.length === 4
+          ? "Te falta 1 letra"
+          : `Te faltan ${5 - userAnswer.length} letras`;
+      return;
+    }
 
-      if (userAnswer.length !== 5) {
-        messageText.textContent = "¡Te faltan letras!"
-        return;
+    messageText.textContent = "";
+
+    userAnswer.map((_, i) => {
+      let letterColor = "";
+      let letterBox = letterRows[letterRowIndex].children[i];
+
+      let letterPosition = rightWord.indexOf(userAnswer[i]);
+
+      if (rightWord[i] === userAnswer[i]) {
+        letterColor = "letter-green";
+      } else if (letterPosition === -1) {
+        letterColor = "letter-grey";
+      } else {
+        letterColor = "letter-yellow";
       }
 
-      if (correctWord === userAnswer.join("")) {
-        didUserWin$.next();
-      }
+      letterBox.classList.add(letterColor);
+    });
 
-      for (let i = 0; i < 5; i++) {
-        let letterColor = "";
-        let letterBox = Array.from(letterRows)[letterRowIndex].children[i];
-        console.log(letterBox);
-        let letterPosition = Array.from(correctWord).indexOf(userAnswer[i]);
-        console.log(letterPosition);
+    if (userAnswer.join("") === rightWord) {
+      messageText.textContent = `😊 ¡Sí! La palabra ${rightWord.toUpperCase()} es la correcta`;
+      didUserWinOrLose$.next();
+      restartButton.disabled = false;
+    } else {
+      letterIndex = 0;
+      letterRowIndex++;
+      userAnswer = [];
 
-        if (letterPosition === -1) {
-          letterColor = "letter-grey";
-        } else {
-          if (correctWordArray[i] === userAnswer[i]) {
-            letterColor = "letter-green";
-          } else {
-            letterColor = "letter-yellow";
-          }
-        }
-
-        letterBox.classList.add(letterColor);
-      }
-
-      if (userAnswer.length === 5) {
-        letterIndex = 0;
-        userAnswer = [];
-        letterRowIndex++;
+      if (letterRowIndex === 6) {
+        messageText.textContent = `😔 Perdiste. La palabra correcta era: "${rightWord.toUpperCase()}"`;
+        didUserWinOrLose$.next();
+        restartButton.disabled = false;
       }
     }
   },
 };
 
-onKeyDown$.subscribe(insertLetter);
-onKeyDown$.subscribe(deleteLetter);
-onKeyDown$.subscribe(checkWord);
+const removeLetter$ = onKeyDown$.pipe(
+  map((event) => event.key),
+  filter((key) => key === "Backspace" && letterIndex !== 0)
+);
 
-didUserWin$.subscribe(() => {
-  const letterRowsWon = Array.from(letterRows)[letterRowIndex];
-  for (let i = 0; i < 5; i++) {
-    letterRowsWon.children[i].classList.add("letter-green");
-  }
+const removeLetter = {
+  next: () => {
+    let letterBox = letterRows[letterRowIndex].children[userAnswer.length - 1];
+    letterBox.textContent = "";
+    letterBox.classList = "letter";
+    letterIndex--;
+    userAnswer.pop();
+  },
+};
+
+const onRestartClick$ = fromEvent(restartButton, "click");
+const onWindowLoad$ = fromEvent(window, "load");
+const restartGame$ = merge(onWindowLoad$, onRestartClick$);
+
+restartGame$.subscribe(() => {
+  Array.from(letterRows).map((row) =>
+    Array.from(row.children).map((letterBox) => {
+      letterBox.textContent = "";
+      letterBox.classList = "letter";
+    })
+  );
+
+  letterRowIndex = 0;
+  letterIndex = 0;
+  userAnswer = [];
+  messageText.textContent = "";
+  rightWord = getRandomWord();
+
+  restartButton.disabled = true;
+
+  console.log(`Right word: ${rightWord}`);
+
+  let insertLetterSubscription = insertLetter$
+    .pipe(takeUntil(didUserWinOrLose$))
+    .subscribe(insertLetter);
+  let checkWordSubscription = checkWord$
+    .pipe(takeUntil(didUserWinOrLose$))
+    .subscribe(checkWord);
+  let removeLetterSubscription = removeLetter$
+    .pipe(takeUntil(didUserWinOrLose$))
+    .subscribe(removeLetter);
+
+  didUserWinOrLose$.subscribe(() => {
+    insertLetterSubscription.unsubscribe();
+    checkWordSubscription.unsubscribe();
+    removeLetterSubscription.unsubscribe();
+  });
 });
